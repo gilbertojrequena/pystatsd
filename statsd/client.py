@@ -1,9 +1,10 @@
 from __future__ import with_statement
-from collections import deque
+
+import abc
 import functools
 import random
 import socket
-import abc
+from collections import deque
 
 # Use timer that's not susceptable to time of day adjustments.
 try:
@@ -12,7 +13,6 @@ try:
 except ImportError:
     # fall back to using time
     from time import time as time_now
-
 
 __all__ = ['StatsClient', 'TCPStatsClient']
 
@@ -27,16 +27,18 @@ def safe_wraps(wrapper, *args, **kwargs):
 class Timer(object):
     """A context manager/decorator for statsd.timing()."""
 
-    def __init__(self, client, stat, rate=1):
+    def __init__(self, client, stat, rate=1, tags=None):
         self.client = client
         self.stat = stat
         self.rate = rate
         self.ms = None
         self._sent = False
         self._start_time = None
+        self.tags = tags
 
     def __call__(self, f):
         """Thread-safe timing function decorator."""
+
         @safe_wraps(f)
         def _wrapped(*args, **kwargs):
             start_time = time_now()
@@ -44,8 +46,9 @@ class Timer(object):
                 return_value = f(*args, **kwargs)
             finally:
                 elapsed_time_ms = 1000.0 * (time_now() - start_time)
-                self.client.timing(self.stat, elapsed_time_ms, self.rate)
+                self.client.timing(self.stat, elapsed_time_ms, self.rate, self.tags)
             return return_value
+
         return _wrapped
 
     def __enter__(self):
@@ -75,7 +78,7 @@ class Timer(object):
         if self._sent:
             raise RuntimeError('Already sent data.')
         self._sent = True
-        self.client.timing(self.stat, self.ms, self.rate)
+        self.client.timing(self.stat, self.ms, self.rate, self.tags)
 
 
 class StatsClientBase(object):
@@ -91,42 +94,42 @@ class StatsClientBase(object):
     def pipeline(self):
         pass
 
-    def timer(self, stat, rate=1):
-        return Timer(self, stat, rate)
+    def timer(self, stat, rate=1, tags=None):
+        return Timer(self, stat, rate, tags)
 
-    def timing(self, stat, delta, rate=1):
+    def timing(self, stat, delta, rate=1, tags=None):
         """Send new timing information. `delta` is in milliseconds."""
-        self._send_stat(stat, '%0.6f|ms' % delta, rate)
+        self._send_stat(stat, '%0.6f|ms' % delta, rate, tags)
 
-    def incr(self, stat, count=1, rate=1):
+    def incr(self, stat, count=1, rate=1, tags=None):
         """Increment a stat by `count`."""
-        self._send_stat(stat, '%s|c' % count, rate)
+        self._send_stat(stat, '%s|c' % count, rate, tags)
 
-    def decr(self, stat, count=1, rate=1):
+    def decr(self, stat, count=1, rate=1, tags=None):
         """Decrement a stat by `count`."""
-        self.incr(stat, -count, rate)
+        self.incr(stat, -count, rate, tags)
 
-    def gauge(self, stat, value, rate=1, delta=False):
+    def gauge(self, stat, value, rate=1, delta=False, tags=None):
         """Set a gauge value."""
         if value < 0 and not delta:
             if rate < 1:
                 if random.random() > rate:
                     return
             with self.pipeline() as pipe:
-                pipe._send_stat(stat, '0|g', 1)
-                pipe._send_stat(stat, '%s|g' % value, 1)
+                pipe._send_stat(stat, '0|g', 1, tags=tags)
+                pipe._send_stat(stat, '%s|g' % value, 1, tags=tags)
         else:
             prefix = '+' if delta and value >= 0 else ''
-            self._send_stat(stat, '%s%s|g' % (prefix, value), rate)
+            self._send_stat(stat, '%s%s|g' % (prefix, value), rate, tags=tags)
 
-    def set(self, stat, value, rate=1):
+    def set(self, stat, value, rate=1, tags=None):
         """Set a set value."""
-        self._send_stat(stat, '%s|s' % value, rate)
+        self._send_stat(stat, '%s|s' % value, rate, tags)
 
-    def _send_stat(self, stat, value, rate):
-        self._after(self._prepare(stat, value, rate))
+    def _send_stat(self, stat, value, rate, tags=None):
+        self._after(self._prepare(stat, value, rate, tags=tags))
 
-    def _prepare(self, stat, value, rate):
+    def _prepare(self, stat, value, rate, tags=None):
         if rate < 1:
             if random.random() > rate:
                 return
@@ -135,11 +138,17 @@ class StatsClientBase(object):
         if self._prefix:
             stat = '%s.%s' % (self._prefix, stat)
 
+        if tags:
+            return '%s,%s:%s' % (stat, self._build_tags_string(tags), value)
+
         return '%s:%s' % (stat, value)
 
     def _after(self, data):
         if data:
             self._send(data)
+
+    def _build_tags_string(self, tags):
+        return ','.join('%s=%s' % (str(k), str(v)) for k, v in tags.items())
 
 
 class StatsClient(StatsClientBase):
@@ -212,7 +221,6 @@ class TCPStatsClient(StatsClientBase):
 
 
 class PipelineBase(StatsClientBase):
-
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, client):

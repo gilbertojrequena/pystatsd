@@ -1,4 +1,5 @@
 from __future__ import with_statement
+
 import functools
 import random
 import re
@@ -10,16 +11,13 @@ from nose.tools import eq_
 from statsd import StatsClient
 from statsd import TCPStatsClient
 
-
 ADDR = (socket.gethostbyname('localhost'), 8125)
-
 
 # proto specific methods to get the socket method to send data
 send_method = {
     'udp': lambda x: x.sendto,
     'tcp': lambda x: x.sendall,
 }
-
 
 # proto specific methods to create the expected value
 make_val = {
@@ -139,6 +137,9 @@ def _test_incr(cl, proto):
     cl.incr('foo', 10, rate=0.5)
     _sock_check(cl._sock, 4, proto, val='foo:10|c|@0.5')
 
+    cl.incr('foo', 10, rate=0.5, tags={'tag0': 'zero', 'tag1': 'one'})
+    _sock_check(cl._sock, 5, proto, val='foo,tag0=zero,tag1=one:10|c|@0.5')
+
 
 @mock.patch.object(random, 'random', lambda: -1)
 def test_incr_udp():
@@ -167,6 +168,9 @@ def _test_decr(cl, proto):
     cl.decr('foo', 1, rate=0.5)
     _sock_check(cl._sock, 4, proto, 'foo:-1|c|@0.5')
 
+    cl.decr('foo', 10, rate=0.5, tags={'tag0': 'zero', 'tag1': 'one'})
+    _sock_check(cl._sock, 5, proto, val='foo,tag0=zero,tag1=one:-10|c|@0.5')
+
 
 @mock.patch.object(random, 'random', lambda: -1)
 def test_decr_udp():
@@ -191,6 +195,9 @@ def _test_gauge(cl, proto):
 
     cl.gauge('foo', 70, rate=0.5)
     _sock_check(cl._sock, 3, proto, 'foo:70|g|@0.5')
+
+    cl.gauge('foo', 70, rate=0.5, tags={'tag0': 'zero', 'tag1': 'one'})
+    _sock_check(cl._sock, 4, proto, 'foo,tag0=zero,tag1=one:70|g|@0.5')
 
 
 @mock.patch.object(random, 'random', lambda: -1)
@@ -339,6 +346,9 @@ def _test_set(cl, proto):
     cl.set('foo', 2.3, 0.5)
     _sock_check(cl._sock, 4, proto, 'foo:2.3|s|@0.5')
 
+    cl.set('foo', 2.3, 0.5, tags={'tag0': 'zero', 'tag1': 'one'})
+    _sock_check(cl._sock, 5, proto, 'foo,tag0=zero,tag1=one:2.3|s|@0.5')
+
 
 @mock.patch.object(random, 'random', lambda: -1)
 def test_set_udp():
@@ -364,6 +374,9 @@ def _test_timing(cl, proto):
     cl.timing('foo', 100, rate=0.5)
     _sock_check(cl._sock, 3, proto, 'foo:100.000000|ms|@0.5')
 
+    cl.timing('foo', 100, rate=0.5, tags={'tag0': 'zero', 'tag1': 'one'})
+    _sock_check(cl._sock, 4, proto, 'foo,tag0=zero,tag1=one:100.000000|ms|@0.5')
+
 
 @mock.patch.object(random, 'random', lambda: -1)
 def test_timing_udp():
@@ -381,17 +394,20 @@ def test_timing_tcp():
 
 def _test_prepare(cl, proto):
     tests = (
-        ('foo:1|c', ('foo', '1|c', 1)),
-        ('bar:50|ms|@0.5', ('bar', '50|ms', 0.5)),
-        ('baz:23|g', ('baz', '23|g', 1)),
+        ('foo:1|c', ('foo', '1|c', 1, None)),
+        ('bar:50|ms|@0.5', ('bar', '50|ms', 0.5, None)),
+        ('baz:23|g', ('baz', '23|g', 1, None)),
+        ('foo,tag0=zero,tag1=one:1|c', ('foo', '1|c', 1, {'tag0': 'zero', 'tag1': 'one'})),
+        ('bar,tag0=zero,tag1=one:50|ms|@0.5', ('bar', '50|ms', 0.5, {'tag0': 'zero', 'tag1': 'one'})),
+        ('baz,tag0=zero,tag1=one:23|g', ('baz', '23|g', 1, {'tag0': 'zero', 'tag1': 'one'})),
     )
 
-    def _check(o, s, v, r):
+    def _check(o, s, v, r, t):
         with mock.patch.object(random, 'random', lambda: -1):
-            eq_(o, cl._prepare(s, v, r))
+            eq_(o, cl._prepare(s, v, r, t))
 
-    for o, (s, v, r) in tests:
-        _check(o, s, v, r)
+    for o, (s, v, r, t) in tests:
+        _check(o, s, v, r, t)
 
 
 @mock.patch.object(random, 'random', lambda: -1)
@@ -451,7 +467,7 @@ def _test_timer_decorator(cl, proto):
     def foo(a, b):
         return [a, b]
 
-    @cl.timer('bar')
+    @cl.timer('bar', tags={'tag0': 'zero', 'tag1': 'one'})
     def bar(a, b):
         return [b, a]
 
@@ -461,10 +477,10 @@ def _test_timer_decorator(cl, proto):
     _timer_check(cl._sock, 1, proto, 'foo', 'ms')
 
     eq_([2, 4], bar(4, 2))
-    _timer_check(cl._sock, 2, proto, 'bar', 'ms')
+    _timer_check(cl._sock, 2, proto, 'bar,tag0=zero,tag1=one', 'ms')
 
     eq_([6, 5], bar(5, 6))
-    _timer_check(cl._sock, 3, proto, 'bar', 'ms')
+    _timer_check(cl._sock, 3, proto, 'bar,tag0=zero,tag1=one', 'ms')
 
 
 def test_timer_decorator_udp():
@@ -503,6 +519,12 @@ def _test_timer_context_rate(cl, proto):
 
     _timer_check(cl._sock, 1, proto, 'foo', 'ms|@0.5')
 
+    with cl.timer('foo', rate=0.5, tags={'tag0': 'zero', 'tag1': 'one'}):
+        pass
+
+    _timer_check(cl._sock, 2, proto, 'foo,tag0=zero,tag1=one', 'ms|@0.5')
+
+
 
 @mock.patch.object(random, 'random', lambda: -1)
 def test_timer_context_rate_udp():
@@ -535,7 +557,7 @@ def _test_timer_decorator_rate(cl, proto):
     def foo(a, b):
         return [b, a]
 
-    @cl.timer('bar', rate=0.2)
+    @cl.timer('bar', rate=0.2, tags={'tag0': 'zero', 'tag1': 'one'})
     def bar(a, b=2, c=3):
         return [c, b, a]
 
@@ -543,7 +565,7 @@ def _test_timer_decorator_rate(cl, proto):
     _timer_check(cl._sock, 1, proto, 'foo', 'ms|@0.1')
 
     eq_([3, 2, 5], bar(5))
-    _timer_check(cl._sock, 2, proto, 'bar', 'ms|@0.2')
+    _timer_check(cl._sock, 2, proto, 'bar,tag0=zero,tag1=one', 'ms|@0.2')
 
 
 @mock.patch.object(random, 'random', lambda: -1)
@@ -562,10 +584,10 @@ def test_timer_decorator_rate_tcp():
 
 def _test_timer_context_exceptions(cl, proto):
     with assert_raises(socket.timeout):
-        with cl.timer('foo'):
+        with cl.timer('foo', tags={'tag0': 'zero', 'tag1': 'one'}):
             raise socket.timeout()
 
-    _timer_check(cl._sock, 1, proto, 'foo', 'ms')
+    _timer_check(cl._sock, 1, proto, 'foo,tag0=zero,tag1=one', 'ms')
 
 
 def test_timer_context_exceptions_udp():
@@ -724,11 +746,11 @@ def test_timer_object_stop_without_start_tcp():
 
 def _test_pipeline(cl, proto):
     pipe = cl.pipeline()
-    pipe.incr('foo')
+    pipe.incr('foo', tags={'tag0': 'zero', 'tag1': 'one'})
     pipe.decr('bar')
-    pipe.timing('baz', 320)
+    pipe.timing('baz', 320, tags={'tag0': 'zero', 'tag1': 'one'})
     pipe.send()
-    _sock_check(cl._sock, 1, proto, 'foo:1|c\nbar:-1|c\nbaz:320.000000|ms')
+    _sock_check(cl._sock, 1, proto, 'foo,tag0=zero,tag1=one:1|c\nbar:-1|c\nbaz,tag0=zero,tag1=one:320.000000|ms')
 
 
 def test_pipeline_udp():
@@ -764,9 +786,9 @@ def test_pipeline_null_tcp():
 def _test_pipeline_manager(cl, proto):
     with cl.pipeline() as pipe:
         pipe.incr('foo')
-        pipe.decr('bar')
+        pipe.decr('bar', tags={'tag0': 'zero', 'tag1': 'one'})
         pipe.gauge('baz', 15)
-    _sock_check(cl._sock, 1, proto, 'foo:1|c\nbar:-1|c\nbaz:15|g')
+    _sock_check(cl._sock, 1, proto, 'foo:1|c\nbar,tag0=zero,tag1=one:-1|c\nbaz:15|g')
 
 
 def test_pipeline_manager_udp():
@@ -805,6 +827,7 @@ def _test_pipeline_timer_decorator(cl, proto):
         @pipe.timer('foo')
         def foo():
             pass
+
         foo()
     _timer_check(cl._sock, 1, proto, 'foo', 'ms')
 
@@ -823,10 +846,10 @@ def test_pipeline_timer_decorator_tcp():
 
 def _test_pipeline_timer_object(cl, proto):
     with cl.pipeline() as pipe:
-        t = pipe.timer('foo').start()
+        t = pipe.timer('foo', tags={'tag0': 'zero', 'tag1': 'one'}).start()
         t.stop()
         _sock_check(cl._sock, 0, proto)
-    _timer_check(cl._sock, 1, proto, 'foo', 'ms')
+    _timer_check(cl._sock, 1, proto, 'foo,tag0=zero,tag1=one', 'ms')
 
 
 def test_pipeline_timer_object_udp():

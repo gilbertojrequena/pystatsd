@@ -45,7 +45,7 @@ and prefix information.
 
 ::
 
-    StatsClient().incr(stat, count=1, rate=1)
+    StatsClient().incr(stat, count=1, rate=1, tags=None)
 
 Increment a :ref:`counter <counter-type>`.
 
@@ -58,6 +58,8 @@ Increment a :ref:`counter <counter-type>`.
   this percentage of the time. The statsd server will take the sample
   rate into account for counters.
 
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`telegraf_plugin_tag_protocol`
 
 .. _decr:
 
@@ -66,7 +68,7 @@ Increment a :ref:`counter <counter-type>`.
 
 ::
 
-    StatsClient().decr(stat, count=1, rate=1)
+    StatsClient().decr(stat, count=1, rate=1, tags=None)
 
 Decrement a :ref:`counter <counter-type>`.
 
@@ -80,6 +82,8 @@ Decrement a :ref:`counter <counter-type>`.
   this percentage of the time. The statsd server will take the sample
   rate into account for counters.
 
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`telegraf_plugin_tag_protocol`
 
 .. _gauge:
 
@@ -88,7 +92,7 @@ Decrement a :ref:`counter <counter-type>`.
 
 ::
 
-    StatsClient().gauge(stat, value, rate=1, delta=False)
+    StatsClient().gauge(stat, value, rate=1, delta=False, tags=None)
 
 Set a :ref:`gauge <gauge-type>` value.
 
@@ -104,6 +108,9 @@ Set a :ref:`gauge <gauge-type>` value.
   absolute value. See the :ref:`gauge <gauge-type>` type for more
   detail.
 
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`_telegraf_plugin_tag_protocol`
+
 .. note::
 
    Gauges were added to the statsd server in commit 0ed78be_. If you try
@@ -118,7 +125,7 @@ Set a :ref:`gauge <gauge-type>` value.
 
 ::
 
-    StatsClient().set(stat, value, rate=1)
+    StatsClient().set(stat, value, rate=1, tags=None)
 
 Increment a :ref:`set <set-type>` value.
 
@@ -129,6 +136,9 @@ Increment a :ref:`set <set-type>` value.
 * ``rate``: a sample rate, a float between 0 and 1. Will only send data
   this percentage of the time. The statsd server does *not* take the
   sample rate into account for sets. Use with care.
+
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`telegraf_plugin_tag_protocol`
 
 .. note::
 
@@ -144,7 +154,7 @@ Increment a :ref:`set <set-type>` value.
 
 ::
 
-    StatsClient().timing(stat, delta, rate=1)
+    StatsClient().timing(stat, delta, rate=1, tags=None)
 
 Record :ref:`timer <timer-type>` information.
 
@@ -157,6 +167,9 @@ Record :ref:`timer <timer-type>` information.
   this percentage of the time. The statsd server does *not* take the
   sample rate into account for timers.
 
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`telegraf_plugin_tag_protocol`
+
 
 .. _timer:
 
@@ -165,7 +178,7 @@ Record :ref:`timer <timer-type>` information.
 
 ::
 
-    with StatsClient().timer(stat, rate=1):
+    with StatsClient().timer(stat, rate=1, tags=None):
         pass
 
 ::
@@ -186,6 +199,9 @@ call.  See also the :ref:`chapter on timing <timing-chapter>`.
 * ``rate``: a sample rate, a float between 0 and 1. Will only send data
   this percentage of the time. The statsd server does *not* take the
   sample rate into account for timers.
+
+* ``tags``: optional tags dictionary, this valued are used by telegraf and the
+   protocol is the following :ref:`telegraf_plugin_tag_protocol`
 
 .. _timer-start:
 
@@ -363,5 +379,6 @@ Internally this does nothing else than calling ``close()`` and
 
 
 .. _statsd: https://github.com/etsy/statsd
+.. _telegraf_plugin_tag_protocol: https://github.com/influxdata/telegraf/tree/master/plugins/inputs/statsd#influx-statsd
 .. _0ed78be: https://github.com/etsy/statsd/commit/0ed78be7
 .. _1c10cfc0ac: https://github.com/etsy/statsd/commit/1c10cfc0ac

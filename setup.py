@@ -4,13 +4,13 @@ from setuptools import find_packages, setup
 
 
 setup(
-    name='statsd',
-    version='3.2.2',
-    description='A simple statsd client.',
+    name='statsd-influx-tags',
+    version='1.0.0',
+    description='A simple statsd client with influx tag support.',
     long_description=open('README.rst').read(),
-    author='James Socol',
-    author_email='james@mozilla.com',
-    url='https://github.com/jsocol/pystatsd',
+    author='Gilberto J Requena',
+    author_email='gilbertojrequena@gmail.com',
+    url='https://github.com/gilbertojrequena/pystatsd-telegraf-tags',
     license='MIT',
     packages=find_packages(),
     include_package_data=True,
